@@ -7,88 +7,142 @@
 <title>探索地域</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;background:#f7f7f7}
-header{height:58px;background:white;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid #ddd;position:relative;z-index:1000}
-h1{font-size:20px;margin:0}.btn{border:0;border-radius:12px;padding:10px 13px;background:#111;color:white;font-weight:600}
+html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+body{overflow:hidden}
+header{height:58px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;box-sizing:border-box;position:relative;z-index:1000;border-bottom:1px solid #ddd}
+h1{font-size:20px;margin:0}
+button{border:0;border-radius:12px;padding:10px 14px;background:#111;color:#fff;font-weight:600}
 #map{height:calc(100vh - 58px);width:100%}
-.panel{position:fixed;left:12px;right:12px;bottom:12px;background:rgba(255,255,255,.96);border-radius:18px;padding:12px;box-shadow:0 4px 25px #0002;z-index:2000}
-.hint{text-align:center;font-size:12px;color:#666;margin-bottom:9px}
-.row{display:flex;gap:8px}.row .btn{flex:1}
-.modal{position:fixed;inset:0;background:#0005;z-index:3000;display:none;align-items:flex-end}
-.sheet{background:white;border-radius:22px 22px 0 0;padding:18px;width:100%;max-height:75vh;overflow:auto}
-.sheet h2{margin:0 0 12px}.item{padding:12px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;gap:10px}
-.small{font-size:12px;color:#777}.star{color:#d89b00;font-weight:700}.danger{color:#c00;border:0;background:none}
+.bottom{position:absolute;z-index:1000;left:12px;right:12px;bottom:14px;background:#fffffff2;border-radius:18px;padding:11px;box-shadow:0 4px 22px #0003}
+.hint{text-align:center;color:#666;font-size:12px;margin-bottom:8px}
+.row{display:flex;gap:8px}.row button{flex:1}
+.sheet{display:none;position:fixed;z-index:3000;inset:0;background:#0006;align-items:flex-end}
+.box{background:#fff;width:100%;max-height:75%;overflow:auto;border-radius:22px 22px 0 0;padding:18px;box-sizing:border-box}
+.item{display:flex;justify-content:space-between;gap:8px;padding:13px 0;border-bottom:1px solid #eee}
+.meta{font-size:12px;color:#777;margin-top:4px}
+.item button{font-size:12px;padding:8px}
+.next{color:#d59a00;font-weight:700}
 </style>
 </head>
 <body>
-<header><h1>探索地域</h1><button class="btn" onclick="openList()">一覧</button></header>
+<header><h1>探索地域</h1><button id="listBtn">一覧</button></header>
 <div id="map"></div>
-<div class="panel">
+<div class="bottom">
   <div class="hint">地図をタップすると「探索地域」を追加</div>
   <div class="row">
-    <button class="btn" onclick="randomNext()">次の目的地を決める</button>
-    <button class="btn" onclick="locate()">現在地</button>
+    <button id="randomBtn">次の目的地を決める</button>
+    <button id="locBtn">現在地</button>
   </div>
 </div>
-
-<div id="modal" class="modal" onclick="if(event.target===this)closeModal()">
-  <div class="sheet">
-    <h2>探索地域</h2>
-    <div id="list"></div>
-    <button class="btn" style="width:100%;margin-top:14px" onclick="closeModal()">閉じる</button>
+<div class="sheet" id="sheet">
+  <div class="box">
+    <h2>探索地域一覧</h2>
+    <div id="items"></div>
+    <button id="closeBtn" style="width:100%;margin-top:12px">閉じる</button>
   </div>
 </div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const KEY="exploration_places_v1";
+const KEY="exploration_map_v3";
 let places=JSON.parse(localStorage.getItem(KEY)||"[]");
-let map=L.map("map").setView([35.6762,139.6503],6);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
-let markers={};
+const map=L.map("map").setView([34.1785,131.4737],8);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+ maxZoom:19,
+ attribution:"© OpenStreetMap contributors"
+}).addTo(map);
 
-function save(){localStorage.setItem(KEY,JSON.stringify(places))}
-function icon(next){
- return L.divIcon({className:"",html:`<div style="font-size:32px;text-shadow:0 2px 4px #0006">${next?"⭐":"📍"}</div>`,iconSize:[36,36],iconAnchor:[18,34]})
-}
+const markers=new Map();
+
+function save(){localStorage.setItem(KEY,JSON.stringify(places));}
 function render(){
- Object.values(markers).forEach(m=>map.removeLayer(m)); markers={};
+ markers.forEach(m=>m.remove()); markers.clear();
  places.forEach(p=>{
-   let m=L.marker([p.lat,p.lng],{icon:icon(p.next)}).addTo(map);
-   m.bindPopup(`<b>${p.next?"⭐ 次の目的地":"📍 探索地域"}</b><br><small>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small><br><br><button onclick="setNext('${p.id}')">次の目的地にする</button> <button onclick="toggleVisited('${p.id}')">${p.visited?"未探索に戻す":"探索済みにする"}</button>`);
-   markers[p.id]=m;
- })
+   const marker=L.marker([p.lat,p.lng]).addTo(map);
+   marker.bindPopup(`
+     <b>${p.next?"⭐ 次の目的地":"📍 探索地域"}</b><br>
+     <small>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small><br><br>
+     <button onclick="setNext('${p.id}')">${p.next?"選択中":"次の目的地にする"}</button>
+     <button onclick="toggleVisited('${p.id}')">${p.visited?"未探索に戻す":"探索済みにする"}</button>
+   `);
+   markers.set(p.id,marker);
+ });
 }
 map.on("click",e=>{
  const p={id:crypto.randomUUID(),lat:e.latlng.lat,lng:e.latlng.lng,next:false,visited:false};
- places.push(p); save(); render();
- markers[p.id].openPopup();
+ places.push(p);save();render();markers.get(p.id).openPopup();
 });
-function setNext(id){places.forEach(p=>p.next=p.id===id);save();render();openList()}
-function toggleVisited(id){let p=places.find(x=>x.id===id);if(p)p.visited=!p.visited;save();render()}
-function randomNext(){
- let a=places.filter(p=>!p.visited);
- if(!a.length){alert("未探索の探索地域がありません");return}
- setNext(a[Math.floor(Math.random()*a.length)].id);
- let p=places.find(x=>x.next); map.setView([p.lat,p.lng],14);
+window.setNext=function(id){
+ places.forEach(p=>p.next=p.id===id);save();render();
+ const p=places.find(p=>p.id===id);
+ if(p) map.setView([p.lat,p.lng],14);
+};
+window.toggleVisited=function(id){
+ const p=places.find(p=>p.id===id);
+ if(p){p.visited=!p.visited;save();render();}
+};
+document.getElementById("randomBtn").onclick=()=>{
+ const candidates=places.filter(p=>!p.visited);
+ if(!candidates.length){alert("未探索の探索地域がありません。");return;}
+ const p=candidates[Math.floor(Math.random()*candidates.length)];
+ places.forEach(x=>x.next=x.id===p.id);
+ save();render();map.setView([p.lat,p.lng],14);
+ markers.get(p.id).openPopup();
+};
+let watchId=null;
+let currentMarker=null;
+let currentAccuracy=null;
+
+function updateCurrentPosition(pos){
+ const lat=pos.coords.latitude, lng=pos.coords.longitude;
+ if(currentMarker){currentMarker.setLatLng([lat,lng]); currentAccuracy.setLatLng([lat,lng]); currentAccuracy.setRadius(pos.coords.accuracy||30);}
+ else{
+   currentAccuracy=L.circle([lat,lng],{radius:pos.coords.accuracy||30,weight:1,fillOpacity:.08}).addTo(map);
+   currentMarker=L.circleMarker([lat,lng],{radius:8,weight:3,fillOpacity:.9}).addTo(map).bindPopup("現在地");
+ }
+ map.setView([lat,lng],16);
 }
-function locate(){
- if(!navigator.geolocation){alert("現在地取得に対応していません");return}
- navigator.geolocation.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],14),()=>alert("現在地を取得できませんでした"))
+
+function startLocation(){
+ if(!window.isSecureContext){alert("現在地機能にはHTTPS接続が必要です。Safariで公開URLを開いてください。");return;}
+ if(!navigator.geolocation){alert("このブラウザでは現在地取得に対応していません。");return;}
+ const btn=document.getElementById("locBtn");
+ btn.textContent="現在地取得中…";
+ if(watchId!==null) navigator.geolocation.clearWatch(watchId);
+ navigator.geolocation.getCurrentPosition(updateCurrentPosition,err=>{
+   if(err.code===1) alert("位置情報が許可されていません。iPhoneの設定でSafariの位置情報を「このAppの使用中」にしてください。");
+   else if(err.code===2) alert("現在地を取得できませんでした。GPSを受信しやすい場所でもう一度試してください。");
+   else alert("現在地の取得がタイムアウトしました。もう一度試してください。");
+ },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+ watchId=navigator.geolocation.watchPosition(updateCurrentPosition,err=>{
+   if(err.code===1){alert("位置情報が許可されていません。設定からSafariの位置情報を許可してください。"); if(watchId!==null) navigator.geolocation.clearWatch(watchId); watchId=null;}
+ },{enableHighAccuracy:true,timeout:30000,maximumAge:5000});
+ btn.textContent="現在地追跡中";
 }
-function openList(){
- let el=document.getElementById("list");
- if(!places.length) el.innerHTML='<p class="small">まだ探索地域がありません。地図をタップしてください。</p>';
- else el.innerHTML=places.map(p=>`
- <div class="item">
- <div><b>${p.next?"⭐ ":"📍 "}探索地域</b><div class="small">${p.visited?"探索済み":"未探索"} ・ ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div></div>
- <div><button onclick="setNext('${p.id}')">${p.next?"選択中":"次へ"}</button>
- <button class="danger" onclick="del('${p.id}')">削除</button></div>
- </div>`).join("");
- document.getElementById("modal").style.display="flex";
+
+document.getElementById("locBtn").onclick=startLocation;
+const sheet=document.getElementById("sheet"),items=document.getElementById("items");
+function showList(){
+ items.innerHTML="";
+ if(!places.length){
+   items.innerHTML="<p class='meta'>まだ探索地域がありません。地図をタップしてください。</p>";
+ }else{
+   places.forEach(p=>{
+     const row=document.createElement("div");row.className="item";
+     const info=document.createElement("div");
+     info.innerHTML=`<b>${p.next?"⭐ ":"📍 "}探索地域</b><div class="meta">${p.visited?"探索済み":"未探索"}${p.next?" ・ 次の目的地":""}</div>`;
+     const actions=document.createElement("div");
+     const next=document.createElement("button");next.textContent=p.next?"選択中":"次へ";
+     next.onclick=()=>{setNext(p.id);showList();};
+     const del=document.createElement("button");del.textContent="削除";del.style.background="#c62828";
+     del.onclick=()=>{if(confirm("この探索地域を削除しますか？")){places=places.filter(x=>x.id!==p.id);save();render();showList();}};
+     actions.append(next,del);row.append(info,actions);items.append(row);
+   });
+ }
+ sheet.style.display="flex";
 }
-function del(id){places=places.filter(p=>p.id!==id);save();render();openList()}
-function closeModal(){document.getElementById("modal").style.display="none"}
+document.getElementById("listBtn").onclick=showList;
+document.getElementById("closeBtn").onclick=()=>sheet.style.display="none";
+sheet.onclick=e=>{if(e.target===sheet)sheet.style.display="none"};
 render();
 </script>
 </body>
